@@ -1,42 +1,28 @@
-// Gemini API implementation
 import fetch from 'node-fetch';
 
-interface GeminiResponse {
-  candidates: {
-    content: {
-      parts: {
-        text?: string;
-      }[];
-    };
-  }[];
-}
-
-interface GeminiError {
-  error?: {
-    code?: number;
-    message?: string;
-    status?: string;
-  }
+interface LlamaResponse {
+  text?: string;
+  error?: string;
 }
 
 /**
- * Analyze an image using Google Gemini API to extract text
+ * Analyze an image using LLAMA API to extract text
  * @param imageBase64 The base64-encoded image data
  * @returns An object with extracted text or error details
  */
 export async function analyzeImage(imageBase64: string): Promise<{text: string | null; error?: string}> {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || "";
+    const apiKey = "LLM|1097528278865084|9vLMnRv6vEG1don6uGKUgPaNc9I";
     
     if (!apiKey) {
-      console.error("No Gemini API key provided");
+      console.error("No LLAMA API key provided");
       return { 
         text: null,
-        error: "API key missing. Please configure the Gemini API key." 
+        error: "API key missing. Please configure the LLAMA API key." 
       };
     }
     
-    const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+    const apiUrl = "https://api.llama.ai/v1/vision";
     
     const promptText = `
       Extract ALL TEXT from this image first. Then identify and extract ALL partner names and their tippable hours from the text.
@@ -58,84 +44,54 @@ export async function analyzeImage(imageBase64: string): Promise<{text: string |
     `;
     
     const requestBody = {
-      contents: [
-        {
-          parts: [
-            {
-              text: promptText
-            },
-            {
-              inline_data: {
-                mime_type: "image/jpeg",
-                data: imageBase64
-              }
-            }
-          ]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        topP: 0.9,
-        topK: 40,
-        maxOutputTokens: 2048,
-      }
+      image: imageBase64,
+      prompt: promptText,
+      temperature: 0.2,
+      max_tokens: 2048
     };
     
-    const response = await fetch(`${apiUrl}?key=${apiKey}`, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify(requestBody)
     });
     
     if (!response.ok) {
       const errorText = await response.text();
-      let errorMessage = "Failed to call Gemini API";
+      let errorMessage = "Failed to call LLAMA API";
       
       try {
-        const errorData = JSON.parse(errorText) as GeminiError;
-        if (errorData.error?.message) {
-          errorMessage = errorData.error.message;
-          // Hide the API key if it's in the error message
-          errorMessage = errorMessage.replace(/api_key:[a-zA-Z0-9-_]+/, "api_key:[REDACTED]");
+        const errorData = JSON.parse(errorText);
+        if (errorData.error) {
+          errorMessage = errorData.error;
         }
       } catch (e) {
         // If error parsing fails, use the generic message
       }
       
-      console.error("Gemini API error:", response.status, errorText);
+      console.error("LLAMA API error:", response.status, errorText);
       return { 
         text: null, 
         error: `API Error (${response.status}): ${errorMessage}`
       };
     }
     
-    const data = await response.json() as GeminiResponse;
+    const data = await response.json() as LlamaResponse;
     
-    if (!data.candidates || data.candidates.length === 0) {
-      console.error("No candidates in Gemini response");
+    if (!data.text) {
+      console.error("No text in LLAMA response");
       return { 
         text: null,
         error: "No text extracted from the image. Try a clearer image or manual entry."
       };
     }
     
-    const extractedText = data.candidates[0].content.parts
-      .map(part => part.text)
-      .filter(Boolean)
-      .join("\n");
-    
-    if (!extractedText) {
-      return { 
-        text: null,
-        error: "No text extracted from the image. Try a clearer image or manual entry."
-      };
-    }
-    
-    return { text: extractedText };
+    return { text: data.text };
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
+    console.error("Error calling LLAMA API:", error);
     return { 
       text: null,
       error: "An unexpected error occurred while processing the image."
